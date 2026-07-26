@@ -1,0 +1,13 @@
+*
+!/.gitignore
+!/.github/
+!/.github/workflows/
+!/.github/workflows/**
+!/apps-script/
+!/apps-script/**
+!/web/
+!/web/**
+
+__pycache__/
+*.pyc
+desktop.ini
