@@ -314,6 +314,19 @@ button {
   gap: 28px;
 }
 
+.gallery-pagination {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.gallery-pagination button {
+  min-width: 220px;
+}
+
 .date-section {
   display: grid;
   gap: 14px;

@@ -20,6 +20,7 @@ const state = {
   selectedPaths: new Set(),
   entriesByPath: new Map(),
   visibleEntries: [],
+  renderedEntries: [],
   filteredDates: [],
   onlyFavorites: false,
   selectedDate: null,
@@ -28,12 +29,14 @@ const state = {
   mp4Job: null,
   favoritesMode: "local",
   favoritesSyncAvailable: false,
+  renderLimit: 100,
 };
 
 const refs = {};
 const MP4_FPS_DEFAULT = 24;
 const MEDIABUNNY_VERSION = "1.42.0";
 const JSZIP_VERSION = "3.10.1";
+const GALLERY_BATCH_SIZE = 100;
 const APP_CONFIG = globalThis.PIXELA_CONFIG || {};
 const FAVORITES_CONFIG = APP_CONFIG.favorites || {};
 
@@ -200,6 +203,7 @@ function computeVisibleEntries() {
   });
 
   state.visibleEntries = visible;
+  state.renderedEntries = visible.slice(0, state.renderLimit);
   state.filteredDates = [...new Set(visible.map((entry) => entry.date_iso))];
   state.selectedPaths = new Set(
     [...state.selectedPaths].filter((path) => visible.some((entry) => entry.path === path)),
@@ -211,9 +215,10 @@ function updateStatus() {
     state.visibleEntries.some((entry) => entry.path === path),
   ).length;
   const favoriteCount = state.visibleEntries.filter((entry) => state.favorites.has(getFavoriteKey(entry))).length;
+  const renderedCount = state.renderedEntries.length;
 
   refs.statusText.textContent = state.filteredDates.length
-    ? `${state.filteredDates.length} data(s), ${state.visibleEntries.length} imagem(ns), ${favoriteCount} favorita(s), ${selectedCount} selecionada(s).`
+    ? `${state.filteredDates.length} data(s), ${state.visibleEntries.length} imagem(ns), ${favoriteCount} favorita(s), ${selectedCount} selecionada(s), exibindo ${renderedCount}.`
     : "Nenhuma data encontrada para os filtros atuais.";
 
   refs.heroCount.textContent = `${state.catalog.entries.length} imagens indexadas`;
@@ -888,20 +893,43 @@ function createCard(entry) {
   return card;
 }
 
+function updateGalleryPagination() {
+  const total = state.visibleEntries.length;
+  const rendered = state.renderedEntries.length;
+
+  if (!refs.galleryPagination || !refs.galleryPaginationStatus || !refs.galleryLoadMore) {
+    return;
+  }
+
+  if (!total) {
+    refs.galleryPagination.hidden = true;
+    return;
+  }
+
+  refs.galleryPagination.hidden = false;
+  refs.galleryPaginationStatus.textContent =
+    total > rendered
+      ? `Exibindo ${rendered} de ${total} imagens filtradas.`
+      : `Exibindo todas as ${rendered} imagens filtradas.`;
+  refs.galleryLoadMore.hidden = rendered >= total;
+}
+
 function renderGallery() {
   refs.galleryRoot.innerHTML = "";
 
   if (!state.filteredDates.length) {
     refs.galleryEmpty.hidden = false;
+    updateGalleryPagination();
     return;
   }
 
   refs.galleryEmpty.hidden = true;
 
   const fragment = document.createDocumentFragment();
+  const renderedDates = [...new Set(state.renderedEntries.map((entry) => entry.date_iso))];
 
-  for (const dateIso of state.filteredDates) {
-    const entries = state.visibleEntries.filter((entry) => entry.date_iso === dateIso);
+  for (const dateIso of renderedDates) {
+    const entries = state.renderedEntries.filter((entry) => entry.date_iso === dateIso);
     const section = document.createElement("section");
     section.className = "date-section";
 
@@ -921,6 +949,18 @@ function renderGallery() {
   }
 
   refs.galleryRoot.append(fragment);
+  updateGalleryPagination();
+}
+
+function showMoreEntries() {
+  if (state.renderLimit >= state.visibleEntries.length) {
+    return;
+  }
+
+  state.renderLimit = Math.min(state.renderLimit + GALLERY_BATCH_SIZE, state.visibleEntries.length);
+  computeVisibleEntries();
+  updateStatus();
+  renderGallery();
 }
 
 async function toggleFavorite(entry) {
@@ -934,7 +974,7 @@ async function toggleFavorite(entry) {
   }
 
   saveFavoritesLocally();
-  applyFilters(false);
+  applyFilters(false, false);
   syncViewerFavoriteButton();
 
   try {
@@ -947,7 +987,7 @@ async function toggleFavorite(entry) {
       state.favorites.add(key);
     }
     saveFavoritesLocally();
-    applyFilters(false);
+    applyFilters(false, false);
     syncViewerFavoriteButton();
     updateFavoritesSyncStatus("Falha ao salvar favorito online. A alteração foi revertida.");
   }
@@ -969,7 +1009,7 @@ function toggleSelection(path) {
     state.selectedPaths.add(path);
   }
 
-  applyFilters(false);
+  applyFilters(false, false);
 }
 
 function favoriteSelected(addFavorite) {
@@ -982,7 +1022,10 @@ function favoriteSelected(addFavorite) {
   });
 }
 
-function applyFilters(renderCalendarToo = true) {
+function applyFilters(renderCalendarToo = true, resetRenderLimit = true) {
+  if (resetRenderLimit) {
+    state.renderLimit = GALLERY_BATCH_SIZE;
+  }
   computeVisibleEntries();
   updateStatus();
   renderGallery();
@@ -1056,7 +1099,7 @@ function bindEvents() {
     state.onlyFavorites = !state.onlyFavorites;
     refs.favoritesFilter.classList.toggle("is-active", state.onlyFavorites);
     refs.favoritesFilter.textContent = `Só Favoritas: ${state.onlyFavorites ? "ON" : "OFF"}`;
-    applyFilters(false);
+    applyFilters(false, true);
   });
   refs.selectionMode.addEventListener("change", () => {
     state.selectionMode = refs.selectionMode.checked;
@@ -1073,7 +1116,7 @@ function bindEvents() {
   });
   refs.clearSelection.addEventListener("click", () => {
     state.selectedPaths.clear();
-    applyFilters(false);
+    applyFilters(false, false);
   });
   refs.clearFilters.addEventListener("click", () => {
     refs.searchInput.value = "";
@@ -1089,6 +1132,7 @@ function bindEvents() {
     document.documentElement.style.setProperty("--thumb-size", `${refs.thumbSize.value}px`);
     refs.thumbSizeLabel.textContent = `${refs.thumbSize.value} px`;
   });
+  refs.galleryLoadMore.addEventListener("click", showMoreEntries);
   refs.downloadStartDate.addEventListener("change", updateDateRangeDownloadSummary);
   refs.downloadEndDate.addEventListener("change", updateDateRangeDownloadSummary);
   refs.downloadOnlyFavorites.addEventListener("change", updateDateRangeDownloadSummary);
@@ -1193,6 +1237,9 @@ function cacheRefs() {
   refs.heroCount = document.querySelector("#hero-count");
   refs.galleryRoot = document.querySelector("#gallery-root");
   refs.galleryEmpty = document.querySelector("#gallery-empty");
+  refs.galleryPagination = document.querySelector("#gallery-pagination");
+  refs.galleryPaginationStatus = document.querySelector("#gallery-pagination-status");
+  refs.galleryLoadMore = document.querySelector("#gallery-load-more");
   refs.mp4Preset = document.querySelector("#mp4-preset");
   refs.mp4StartDate = document.querySelector("#mp4-start-date");
   refs.mp4EndDate = document.querySelector("#mp4-end-date");
