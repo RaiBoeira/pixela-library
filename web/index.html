@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Pixela Library Web Drive</title>
+    <title>Pixela Library</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="./config.js"></script>
   </head>
@@ -11,13 +11,7 @@
     <div class="app-shell">
       <header class="hero">
         <div>
-          <p class="eyebrow">Pixela Library</p>
-          <h1>Galeria web lendo imagens do Google Drive</h1>
-          <p class="hero-copy">
-            Esta versão usa um catálogo gerado do link público do Drive e carrega
-            as imagens pelas URLs do próprio Google Drive, em ordem da mais
-            recente para a mais antiga.
-          </p>
+          <h1>Pixela Library</h1>
         </div>
         <div class="hero-badge">
           <span id="hero-count">Carregando...</span>
@@ -26,203 +20,212 @@
 
       <main class="layout">
         <aside class="sidebar">
-          <section class="panel">
-            <h2>Filtros</h2>
-            <label class="field">
-              <span>Buscar</span>
-              <input id="search-input" type="search" placeholder="Título, data, paleta..." />
-            </label>
-
-            <label class="field">
-              <span>Paleta</span>
-              <select id="palette-select"></select>
-            </label>
-
-            <label class="field">
-              <span>Dither</span>
-              <select id="dither-select"></select>
-            </label>
-
-            <label class="field">
-              <span>Tamanho das thumbs</span>
-              <input id="thumb-size" type="range" min="180" max="360" step="10" value="280" />
-              <small id="thumb-size-label">280 px</small>
-            </label>
-
-            <div class="button-row">
-              <button id="favorites-filter" class="toggle-button" type="button">Só Favoritas: OFF</button>
-              <button id="clear-filters" type="button">Limpar filtros</button>
-            </div>
-
-            <p id="favorites-sync-status" class="status-hint">
-              Favoritos locais do navegador.
-            </p>
-
-            <label class="checkbox-field">
-              <input id="selection-mode" type="checkbox" />
-              <span>Modo seleção</span>
-            </label>
-
-            <div class="button-stack">
-              <button id="favorite-selected" type="button">Favoritar selecionadas</button>
-              <button id="unfavorite-selected" type="button">Remover favoritas</button>
-              <button id="download-selected" type="button">Baixar selecionadas (.zip)</button>
-              <button id="clear-selection" type="button">Limpar seleção</button>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-header">
-              <h2>Calendário</h2>
-              <button id="clear-date" type="button">Limpar dia</button>
-            </div>
-
-            <div class="calendar-controls">
-              <label class="field compact">
-                <span>Mês</span>
-                <select id="month-select"></select>
+          <details class="panel dropdown-panel" open>
+            <summary>Filtros e Selecao</summary>
+            <div class="panel-content">
+              <label class="field">
+                <span>Buscar</span>
+                <input id="search-input" type="search" placeholder="Titulo, data, paleta..." />
               </label>
 
-              <label class="field compact">
-                <span>Ano</span>
-                <select id="year-select"></select>
+              <label class="field">
+                <span>Paleta</span>
+                <select id="palette-select"></select>
               </label>
+
+              <label class="field">
+                <span>Dither</span>
+                <select id="dither-select"></select>
+              </label>
+
+              <label class="field">
+                <span>Tamanho das thumbs</span>
+                <input id="thumb-size" type="range" min="180" max="360" step="10" value="280" />
+                <small id="thumb-size-label">280 px</small>
+              </label>
+
+              <div class="button-row">
+                <button id="favorites-filter" class="toggle-button" type="button">So Favoritas: OFF</button>
+                <button id="clear-filters" type="button">Limpar filtros</button>
+              </div>
+
+              <p id="favorites-sync-status" class="status-hint">
+                Favoritos locais do navegador.
+              </p>
+
+              <label class="checkbox-field">
+                <input id="selection-mode" type="checkbox" />
+                <span>Modo selecao</span>
+              </label>
+
+              <div class="button-stack">
+                <button id="favorite-selected" type="button">Favoritar selecionadas</button>
+                <button id="unfavorite-selected" type="button">Remover favoritas</button>
+                <button id="download-selected" type="button">Baixar selecionadas (.zip)</button>
+                <button id="clear-selection" type="button">Limpar selecao</button>
+              </div>
             </div>
+          </details>
 
-            <div id="calendar-grid" class="calendar-grid"></div>
-          </section>
+          <details class="panel dropdown-panel">
+            <summary>Calendario</summary>
+            <div class="panel-content">
+              <div class="panel-header">
+                <h2>Calendario</h2>
+                <button id="clear-date" type="button">Limpar dia</button>
+              </div>
 
-          <section class="panel">
-            <h2>Status</h2>
-            <p id="status-text" class="status-text">Carregando catálogo...</p>
-            <p class="status-hint">
-              Favoritos continuam conceituais e ficam no navegador.
-            </p>
-          </section>
+              <div class="calendar-controls">
+                <label class="field compact">
+                  <span>Mes</span>
+                  <select id="month-select"></select>
+                </label>
 
-          <section class="panel">
-            <h2>Baixar por Data</h2>
+                <label class="field compact">
+                  <span>Ano</span>
+                  <select id="year-select"></select>
+                </label>
+              </div>
 
-            <div class="calendar-controls">
-              <label class="field compact">
-                <span>De</span>
-                <select id="download-start-date"></select>
-              </label>
-
-              <label class="field compact">
-                <span>Até</span>
-                <select id="download-end-date"></select>
-              </label>
+              <div id="calendar-grid" class="calendar-grid"></div>
             </div>
+          </details>
 
-            <label class="checkbox-field">
-              <input id="download-only-favorites" type="checkbox" />
-              <span>Baixar só favoritas neste intervalo</span>
-            </label>
-
-            <div class="button-row">
-              <button id="download-date-range" type="button">Baixar intervalo (.zip)</button>
+          <details class="panel dropdown-panel">
+            <summary>Status</summary>
+            <div class="panel-content">
+              <p id="status-text" class="status-text">Carregando catalogo...</p>
+              <p class="status-hint">
+                Favoritos continuam conceituais e ficam no navegador.
+              </p>
             </div>
+          </details>
 
-            <p id="download-range-summary" class="status-text">Preparando intervalo...</p>
-            <p id="download-range-status" class="status-hint">
-              O lote será compactado em <code>.zip</code> no navegador.
-            </p>
-          </section>
+          <details class="panel dropdown-panel">
+            <summary>Baixar por Data</summary>
+            <div class="panel-content">
+              <div class="calendar-controls">
+                <label class="field compact">
+                  <span>De</span>
+                  <select id="download-start-date"></select>
+                </label>
 
-          <section class="panel">
-            <h2>Exportar MP4</h2>
+                <label class="field compact">
+                  <span>Ate</span>
+                  <select id="download-end-date"></select>
+                </label>
+              </div>
 
-            <label class="field">
-              <span>Preset</span>
-              <select id="mp4-preset">
-                <option value="month">Mês do calendário</option>
-                <option value="visible">Itens visíveis</option>
-                <option value="selected-date">Dia selecionado</option>
-                <option value="all">Tudo</option>
-                <option value="range">Intervalo manual</option>
-              </select>
-            </label>
-
-            <div class="calendar-controls">
-              <label class="field compact">
-                <span>De</span>
-                <select id="mp4-start-date"></select>
+              <label class="checkbox-field">
+                <input id="download-only-favorites" type="checkbox" />
+                <span>Baixar so favoritas neste intervalo</span>
               </label>
 
-              <label class="field compact">
-                <span>Até</span>
-                <select id="mp4-end-date"></select>
-              </label>
+              <div class="button-row">
+                <button id="download-date-range" type="button">Baixar intervalo (.zip)</button>
+              </div>
+
+              <p id="download-range-summary" class="status-text">Preparando intervalo...</p>
+              <p id="download-range-status" class="status-hint">
+                O lote sera compactado em <code>.zip</code> no navegador.
+              </p>
             </div>
+          </details>
 
-            <label class="field">
-              <span>Ordem do vídeo</span>
-              <select id="mp4-order">
-                <option value="asc">Mais antiga → mais recente</option>
-                <option value="desc">Mais recente → mais antiga</option>
-              </select>
-            </label>
-
-            <div class="calendar-controls">
-              <label class="field compact">
-                <span>Frames por imagem</span>
-                <select id="mp4-frames">
-                  <option value="1">1</option>
-                  <option value="2" selected>2</option>
-                  <option value="4">4</option>
-                  <option value="6">6</option>
-                  <option value="8">8</option>
-                  <option value="10">10</option>
-                  <option value="12">12</option>
+          <details class="panel dropdown-panel">
+            <summary>Exportar MP4</summary>
+            <div class="panel-content">
+              <label class="field">
+                <span>Preset</span>
+                <select id="mp4-preset">
+                  <option value="month">Mes do calendario</option>
+                  <option value="visible">Itens visiveis</option>
+                  <option value="selected-date">Dia selecionado</option>
+                  <option value="all">Tudo</option>
+                  <option value="range">Intervalo manual</option>
                 </select>
               </label>
 
-              <label class="field compact">
-                <span>FPS</span>
-                <select id="mp4-fps">
-                  <option value="24" selected>24</option>
-                  <option value="30">30</option>
-                  <option value="60">60</option>
+              <div class="calendar-controls">
+                <label class="field compact">
+                  <span>De</span>
+                  <select id="mp4-start-date"></select>
+                </label>
+
+                <label class="field compact">
+                  <span>Ate</span>
+                  <select id="mp4-end-date"></select>
+                </label>
+              </div>
+
+              <label class="field">
+                <span>Ordem do video</span>
+                <select id="mp4-order">
+                  <option value="asc">Mais antiga -> mais recente</option>
+                  <option value="desc">Mais recente -> mais antiga</option>
                 </select>
               </label>
-            </div>
 
-            <div class="calendar-controls">
-              <label class="field compact">
-                <span>Escala</span>
-                <select id="mp4-scale">
-                  <option value="1" selected>1x</option>
-                  <option value="2">2x</option>
-                  <option value="4">4x</option>
-                </select>
+              <div class="calendar-controls">
+                <label class="field compact">
+                  <span>Frames por imagem</span>
+                  <select id="mp4-frames">
+                    <option value="1">1</option>
+                    <option value="2" selected>2</option>
+                    <option value="4">4</option>
+                    <option value="6">6</option>
+                    <option value="8">8</option>
+                    <option value="10">10</option>
+                    <option value="12">12</option>
+                  </select>
+                </label>
+
+                <label class="field compact">
+                  <span>FPS</span>
+                  <select id="mp4-fps">
+                    <option value="24" selected>24</option>
+                    <option value="30">30</option>
+                    <option value="60">60</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="calendar-controls">
+                <label class="field compact">
+                  <span>Escala</span>
+                  <select id="mp4-scale">
+                    <option value="1" selected>1x</option>
+                    <option value="2">2x</option>
+                    <option value="4">4x</option>
+                  </select>
+                </label>
+
+                <label class="field compact">
+                  <span>Qualidade</span>
+                  <select id="mp4-quality">
+                    <option value="balanced" selected>Equilibrada</option>
+                    <option value="compact">Compacta</option>
+                    <option value="high">Alta</option>
+                  </select>
+                </label>
+              </div>
+
+              <label class="checkbox-field">
+                <input id="mp4-only-favorites" type="checkbox" />
+                <span>Usar so favoritas</span>
               </label>
 
-              <label class="field compact">
-                <span>Qualidade</span>
-                <select id="mp4-quality">
-                  <option value="balanced" selected>Equilibrada</option>
-                  <option value="compact">Compacta</option>
-                  <option value="high">Alta</option>
-                </select>
-              </label>
+              <div class="button-row">
+                <button id="mp4-generate" type="button">Gerar MP4</button>
+                <button id="mp4-cancel" type="button" disabled>Cancelar</button>
+              </div>
+
+              <p id="mp4-summary" class="status-text">Preparando exportador...</p>
+              <p id="mp4-status" class="status-hint">
+                Para videos longos, o ideal e usar navegador com WebCodecs e salvar direto em arquivo.
+              </p>
             </div>
-
-            <label class="checkbox-field">
-              <input id="mp4-only-favorites" type="checkbox" />
-              <span>Usar só favoritas</span>
-            </label>
-
-            <div class="button-row">
-              <button id="mp4-generate" type="button">Gerar MP4</button>
-              <button id="mp4-cancel" type="button" disabled>Cancelar</button>
-            </div>
-
-            <p id="mp4-summary" class="status-text">Preparando exportador...</p>
-            <p id="mp4-status" class="status-hint">
-              Para vídeos longos, o ideal é usar navegador com WebCodecs e salvar direto em arquivo.
-            </p>
-          </section>
+          </details>
         </aside>
 
         <section class="gallery-area">
@@ -236,7 +239,7 @@
 
     <dialog id="viewer" class="viewer">
       <div class="viewer-frame">
-        <button id="viewer-close" class="viewer-close" type="button" aria-label="Fechar visualizador">×</button>
+        <button id="viewer-close" class="viewer-close" type="button" aria-label="Fechar visualizador">x</button>
         <div class="viewer-topbar">
           <div>
             <h2 id="viewer-title"></h2>
@@ -249,9 +252,9 @@
           </div>
         </div>
         <div class="viewer-body">
-          <button id="viewer-prev" class="viewer-nav" type="button" aria-label="Anterior">‹</button>
+          <button id="viewer-prev" class="viewer-nav" type="button" aria-label="Anterior"><</button>
           <img id="viewer-image" alt="" />
-          <button id="viewer-next" class="viewer-nav" type="button" aria-label="Próxima">›</button>
+          <button id="viewer-next" class="viewer-nav" type="button" aria-label="Proxima">></button>
         </div>
         <p class="viewer-hint">Setas para navegar. F para favoritar. Esc para fechar.</p>
       </div>

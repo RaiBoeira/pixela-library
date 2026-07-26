@@ -138,6 +138,46 @@ button {
   box-shadow: var(--shadow);
 }
 
+.dropdown-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.dropdown-panel summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.dropdown-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.dropdown-panel summary::after {
+  content: "+";
+  color: var(--accent-2);
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.dropdown-panel[open] summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.dropdown-panel[open] summary::after {
+  content: "-";
+}
+
+.panel-content {
+  padding: 18px;
+}
+
 .panel h2 {
   margin: 0 0 14px;
   font-size: 1rem;
