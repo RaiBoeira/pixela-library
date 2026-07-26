@@ -543,6 +543,21 @@ async function loadBitmap(url, signal) {
   return createImageBitmap(blob);
 }
 
+async function loadBitmapForEntry(entry, signal) {
+  const candidateUrls = [entry.url, entry.thumbnail_url].filter(Boolean);
+  let lastError = null;
+
+  for (const url of candidateUrls) {
+    try {
+      return await loadBitmap(url, signal);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(`Nao foi possivel decodificar ${entry.filename}: ${lastError?.message ?? lastError}`);
+}
+
 function drawBitmapToCanvas(ctx, bitmap, width, height) {
   ctx.save();
   ctx.fillStyle = "#000";
@@ -683,8 +698,24 @@ async function generateMp4() {
     const quality = refs.mp4Quality.value;
     const fileName = getMp4FileName(entries);
 
-    refs.mp4Status.textContent = "Lendo a primeira imagem para definir a resolução do vídeo...";
-    const firstBitmap = await loadBitmap(entries[0].url, abortController.signal);
+    refs.mp4Status.textContent = "Lendo a primeira imagem valida para definir a resolucao do video...";
+    let firstBitmap = null;
+    let firstEntryIndex = -1;
+
+    for (let index = 0; index < entries.length; index += 1) {
+      try {
+        firstBitmap = await loadBitmapForEntry(entries[index], abortController.signal);
+        firstEntryIndex = index;
+        break;
+      } catch (error) {
+        console.warn(`Pulando imagem sem decodificacao: ${entries[index].filename}`, error);
+      }
+    }
+
+    if (!firstBitmap || firstEntryIndex < 0) {
+      throw new Error("Nenhuma imagem do lote conseguiu ser decodificada para o MP4.");
+    }
+
     const baseWidth = Math.max(2, Math.round(firstBitmap.width * scale));
     const baseHeight = Math.max(2, Math.round(firstBitmap.height * scale));
     const bitrate = estimateBitrate(baseWidth, baseHeight, fps, quality);
@@ -720,15 +751,31 @@ async function generateMp4() {
 
     let timestamp = 0;
     const frameDuration = framesPerImage / fps;
+    let processedImages = 0;
+    let skippedImages = firstEntryIndex;
 
     for (let index = 0; index < entries.length; index += 1) {
       abortController.signal.throwIfAborted();
       const entry = entries[index];
-      const bitmap = index === 0 ? firstBitmap : await loadBitmap(entry.url, abortController.signal);
+      let bitmap = null;
+
+      try {
+        bitmap =
+          index === firstEntryIndex
+            ? firstBitmap
+            : await loadBitmapForEntry(entry, abortController.signal);
+      } catch (error) {
+        skippedImages += 1;
+        console.warn(`Pulando imagem sem decodificacao: ${entry.filename}`, error);
+        refs.mp4Status.textContent =
+          `Pulando imagem com falha de decodificacao... ${index + 1}/${entries.length} verificadas, ${processedImages} usadas, ${skippedImages} puladas.`;
+        continue;
+      }
 
       try {
         drawBitmapToCanvas(ctx, bitmap, baseWidth, baseHeight);
         await source.add(timestamp, frameDuration);
+        processedImages += 1;
       } finally {
         bitmap.close();
       }
@@ -737,8 +784,13 @@ async function generateMp4() {
 
       if ((index + 1) % 5 === 0 || index === entries.length - 1) {
         const progress = `${index + 1}/${entries.length}`;
-        refs.mp4Status.textContent = `Gerando MP4... ${progress} imagens processadas • duração ${formatDuration(timestamp)}`;
+        refs.mp4Status.textContent =
+          `Gerando MP4... ${progress} verificadas, ${processedImages} usadas, ${skippedImages} puladas • duracao ${formatDuration(timestamp)}`;
       }
+    }
+
+    if (!processedImages) {
+      throw new Error("Nenhuma imagem valida conseguiu entrar no MP4.");
     }
 
     source.close();
@@ -747,7 +799,8 @@ async function generateMp4() {
     await targetBundle.finalize(output);
 
     const estimatedSize = (bitrate / 8) * timestamp;
-    refs.mp4Status.textContent = `MP4 pronto. Resolução ${baseWidth}x${baseHeight}, duração ${formatDuration(timestamp)}, tamanho estimado ${formatBytes(estimatedSize)}.`;
+    refs.mp4Status.textContent =
+      `MP4 pronto. Resolucao ${baseWidth}x${baseHeight}, duracao ${formatDuration(timestamp)}, ${processedImages} imagem(ns) usadas, ${skippedImages} puladas, tamanho estimado ${formatBytes(estimatedSize)}.`;
   } catch (error) {
     if (error?.name === "AbortError") {
       refs.mp4Status.textContent = "Exportação cancelada.";
