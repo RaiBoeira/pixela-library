@@ -555,7 +555,7 @@ function drawBitmapToCanvas(ctx, bitmap, width, height) {
   ctx.restore();
 }
 
-async function chooseMp4Target(fileName, MediaBunny) {
+async function chooseMp4TargetLegacy(fileName, MediaBunny) {
   if ("showSaveFilePicker" in window) {
     const fileHandle = await window.showSaveFilePicker({
       suggestedName: fileName,
