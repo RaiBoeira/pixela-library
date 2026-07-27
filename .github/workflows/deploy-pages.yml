@@ -9,6 +9,11 @@ on:
       - "web/**"
       - ".github/workflows/deploy-pages.yml"
       - ".github/workflows/update-catalog.yml"
+  workflow_run:
+    workflows:
+      - Update Drive Catalog
+    types:
+      - completed
 
 permissions:
   contents: read
@@ -21,6 +26,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
 
     steps:
@@ -33,6 +39,7 @@ jobs:
           path: web
 
   deploy:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
