@@ -383,12 +383,14 @@ button {
   padding: 0;
   border: 0;
   background: transparent;
+  width: 100%;
 }
 
 .thumb {
   width: 100%;
-  height: var(--thumb-size, 280px);
-  object-fit: cover;
+  height: auto;
+  max-height: calc(var(--thumb-size, 280px) * 1.6);
+  object-fit: contain;
   border-radius: 12px;
   background: #111216;
 }
