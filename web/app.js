@@ -305,44 +305,95 @@ function getMonthRangeFromSelectors() {
     : null;
 }
 
-function getMp4Range() {
-  const preset = refs.mp4Preset.value;
+function formatDateAsIsoLocal(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
-  if (preset === "visible") {
-    return { entries: [...state.visibleEntries], label: "itens visíveis" };
+function getAvailableDatesBetween(startIso, endIso) {
+  return state.catalog.dates.filter((iso) => iso >= startIso && iso <= endIso);
+}
+
+function getNearestCatalogDate(targetIso) {
+  if (!state.catalog.dates.length) {
+    return "";
   }
 
-  if (preset === "selected-date" && state.selectedDate) {
-    return {
-      start: state.selectedDate,
-      end: state.selectedDate,
-      label: `dia ${formatIsoDateToBr(state.selectedDate)}`,
-    };
-  }
+  let nearestIso = state.catalog.dates[0];
+  let nearestDiff = Math.abs(new Date(`${nearestIso}T00:00:00`).getTime() - new Date(`${targetIso}T00:00:00`).getTime());
 
-  if (preset === "month") {
-    const monthRange = getMonthRangeFromSelectors();
-    if (monthRange) {
-      return {
-        start: monthRange.start,
-        end: monthRange.end,
-        label: `mês ${refs.monthSelect.options[refs.monthSelect.selectedIndex].text}/${refs.yearSelect.value}`,
-      };
+  for (const iso of state.catalog.dates) {
+    const diff = Math.abs(new Date(`${iso}T00:00:00`).getTime() - new Date(`${targetIso}T00:00:00`).getTime());
+    if (diff < nearestDiff) {
+      nearestIso = iso;
+      nearestDiff = diff;
     }
   }
 
-  if (preset === "all") {
-    return {
-      start: state.catalog.dates[0],
-      end: state.catalog.dates[state.catalog.dates.length - 1],
-      label: "biblioteca inteira",
-    };
+  return nearestIso;
+}
+
+function getPresetDateRange(preset) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let start = new Date(today);
+  let end = new Date(today);
+  let label = "intervalo selecionado";
+
+  if (preset === "today") {
+    label = "dia de hoje";
+  } else if (preset === "week") {
+    const weekday = (today.getDay() + 6) % 7;
+    start.setDate(today.getDate() - weekday);
+    label = "semana atual";
+  } else if (preset === "last7") {
+    start.setDate(today.getDate() - 6);
+    label = "ultimos 7 dias";
+  } else if (preset === "month") {
+    start = new Date(today.getFullYear(), today.getMonth(), 1);
+    end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    label = "mes atual";
+  } else if (preset === "last-month") {
+    start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    end = new Date(today.getFullYear(), today.getMonth(), 0);
+    label = "mes passado";
   }
 
   return {
+    startIso: formatDateAsIsoLocal(start),
+    endIso: formatDateAsIsoLocal(end),
+    label,
+  };
+}
+
+function syncMp4PresetDates() {
+  if (!state.catalog?.dates?.length) {
+    return;
+  }
+
+  const { startIso, endIso } = getPresetDateRange(refs.mp4Preset.value);
+  const inRange = getAvailableDatesBetween(startIso, endIso).sort();
+
+  if (inRange.length) {
+    refs.mp4StartDate.value = inRange[0];
+    refs.mp4EndDate.value = inRange[inRange.length - 1];
+    return;
+  }
+
+  const nearest = getNearestCatalogDate(endIso);
+  refs.mp4StartDate.value = nearest;
+  refs.mp4EndDate.value = nearest;
+}
+
+function getMp4Range() {
+  const presetMeta = getPresetDateRange(refs.mp4Preset.value);
+  return {
     start: refs.mp4StartDate.value,
     end: refs.mp4EndDate.value,
-    label: "intervalo manual",
+    label: presetMeta.label,
   };
 }
 
@@ -375,6 +426,7 @@ function populateMp4DateOptions() {
   refs.mp4EndDate.value = state.catalog.dates[state.catalog.dates.length - 1];
   refs.downloadStartDate.value = state.catalog.dates[0];
   refs.downloadEndDate.value = state.catalog.dates[state.catalog.dates.length - 1];
+  syncMp4PresetDates();
 }
 
 function updateMp4Summary() {
@@ -1197,7 +1249,10 @@ function bindEvents() {
       refs.downloadRangeStatus.textContent = `Falha no download por intervalo: ${error.message ?? error}`;
     }
   });
-  refs.mp4Preset.addEventListener("change", updateMp4Summary);
+  refs.mp4Preset.addEventListener("change", () => {
+    syncMp4PresetDates();
+    updateMp4Summary();
+  });
   refs.mp4StartDate.addEventListener("change", updateMp4Summary);
   refs.mp4EndDate.addEventListener("change", updateMp4Summary);
   refs.mp4Order.addEventListener("change", updateMp4Summary);
