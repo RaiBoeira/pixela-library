@@ -30,6 +30,8 @@ const state = {
   favoritesMode: "local",
   favoritesSyncAvailable: false,
   renderLimit: 100,
+  imageDimensions: new Map(),
+  mp4ResolutionScanToken: 0,
 };
 
 const refs = {};
@@ -369,23 +371,31 @@ function getPresetDateRange(preset) {
   };
 }
 
-function syncMp4PresetDates() {
+function syncDatePresetDates(preset, startRef, endRef) {
   if (!state.catalog?.dates?.length) {
     return;
   }
 
-  const { startIso, endIso } = getPresetDateRange(refs.mp4Preset.value);
+  const { startIso, endIso } = getPresetDateRange(preset);
   const inRange = getAvailableDatesBetween(startIso, endIso).sort();
 
   if (inRange.length) {
-    refs.mp4StartDate.value = inRange[0];
-    refs.mp4EndDate.value = inRange[inRange.length - 1];
+    startRef.value = inRange[0];
+    endRef.value = inRange[inRange.length - 1];
     return;
   }
 
   const nearest = getNearestCatalogDate(endIso);
-  refs.mp4StartDate.value = nearest;
-  refs.mp4EndDate.value = nearest;
+  startRef.value = nearest;
+  endRef.value = nearest;
+}
+
+function syncMp4PresetDates() {
+  syncDatePresetDates(refs.mp4Preset.value, refs.mp4StartDate, refs.mp4EndDate);
+}
+
+function syncDownloadPresetDates() {
+  syncDatePresetDates(refs.downloadPreset.value, refs.downloadStartDate, refs.downloadEndDate);
 }
 
 function getMp4Range() {
@@ -415,6 +425,167 @@ function getMp4Entries() {
   return { entries, label: range.label };
 }
 
+function getDateRangeDownloadEntries() {
+  const start = refs.downloadStartDate.value;
+  const end = refs.downloadEndDate.value;
+  const presetMeta = getPresetDateRange(refs.downloadPreset.value);
+  let entries = state.catalog.entries.filter((entry) => entry.date_iso >= start && entry.date_iso <= end);
+
+  if (refs.downloadOnlyFavorites.checked) {
+    entries = entries.filter((entry) => state.favorites.has(getFavoriteKey(entry)));
+  }
+
+  entries.sort(compareEntriesChronologically);
+  return { entries, start, end, label: presetMeta.label };
+}
+
+function getResolutionKey(width, height) {
+  return `${width}x${height}`;
+}
+
+function parseResolutionValue(value) {
+  const match = /^(\d+)x(\d+)$/.exec(value || "");
+  if (!match) {
+    return null;
+  }
+
+  return {
+    width: Number(match[1]),
+    height: Number(match[2]),
+  };
+}
+
+function rememberEntryDimensions(entry, width, height) {
+  if (!entry?.path || !Number.isFinite(width) || !Number.isFinite(height)) {
+    return;
+  }
+
+  state.imageDimensions.set(entry.path, {
+    width: Math.max(1, Math.round(width)),
+    height: Math.max(1, Math.round(height)),
+  });
+}
+
+function getCachedResolutionStats(entries) {
+  const resolutions = new Map();
+  let cachedCount = 0;
+  let largest = null;
+
+  for (const entry of entries) {
+    const dimensions = state.imageDimensions.get(entry.path);
+    if (!dimensions) {
+      continue;
+    }
+
+    cachedCount += 1;
+    const key = getResolutionKey(dimensions.width, dimensions.height);
+    const existing = resolutions.get(key);
+    resolutions.set(key, {
+      width: dimensions.width,
+      height: dimensions.height,
+      count: (existing?.count || 0) + 1,
+    });
+
+    const area = dimensions.width * dimensions.height;
+    const largestArea = largest ? largest.width * largest.height : -1;
+    if (!largest || area > largestArea || (area === largestArea && dimensions.width > largest.width)) {
+      largest = {
+        width: dimensions.width,
+        height: dimensions.height,
+      };
+    }
+  }
+
+  return {
+    cachedCount,
+    totalCount: entries.length,
+    largest,
+    resolutions: [...resolutions.values()].sort((a, b) => {
+      const areaDiff = b.width * b.height - a.width * a.height;
+      return areaDiff || b.width - a.width || b.height - a.height;
+    }),
+  };
+}
+
+function updateMp4ResolutionOptions() {
+  if (!refs.mp4Resolution) {
+    return;
+  }
+
+  const currentValue = refs.mp4Resolution.value || "largest";
+  const { entries } = getMp4Entries();
+  const stats = getCachedResolutionStats(entries);
+  const largestLabel = stats.largest
+    ? `Maior imagem da selecao (${stats.largest.width}x${stats.largest.height})`
+    : "Maior imagem da selecao";
+  const progressSuffix =
+    entries.length && stats.cachedCount < stats.totalCount
+      ? ` (${stats.cachedCount}/${stats.totalCount} resolucoes lidas)`
+      : "";
+
+  const options = [
+    createOption("largest", `${largestLabel}${progressSuffix}`),
+    createOption("first-valid", "Primeira imagem valida"),
+  ];
+
+  for (const resolution of stats.resolutions) {
+    options.push(
+      createOption(
+        getResolutionKey(resolution.width, resolution.height),
+        `${resolution.width}x${resolution.height} (${resolution.count} imagem(ns))`,
+      ),
+    );
+  }
+
+  refs.mp4Resolution.replaceChildren(...options);
+  refs.mp4Resolution.value = options.some((option) => option.value === currentValue)
+    ? currentValue
+    : "largest";
+}
+
+async function ensureMp4ResolutionScan() {
+  const token = ++state.mp4ResolutionScanToken;
+  const { entries } = getMp4Entries();
+  const uncachedEntries = entries.filter((entry) => !state.imageDimensions.has(entry.path));
+
+  updateMp4ResolutionOptions();
+
+  if (!uncachedEntries.length) {
+    return;
+  }
+
+  for (let index = 0; index < uncachedEntries.length; index += 1) {
+    if (token !== state.mp4ResolutionScanToken) {
+      return;
+    }
+
+    const entry = uncachedEntries[index];
+    let bitmap = null;
+
+    try {
+      bitmap = await loadBitmapForEntry(entry);
+    } catch (error) {
+      console.warn(`Falha ao ler resolucao de ${entry.filename}`, error);
+      continue;
+    } finally {
+      bitmap?.close();
+    }
+
+    if ((index + 1) % 5 === 0 || index === uncachedEntries.length - 1) {
+      updateMp4ResolutionOptions();
+      updateMp4Summary();
+    }
+  }
+}
+
+function refreshMp4RangeUi() {
+  updateMp4ResolutionOptions();
+  updateMp4Summary();
+  ensureMp4ResolutionScan().catch((error) => {
+    console.error(error);
+  });
+}
+
 function populateMp4DateOptions() {
   const options = state.catalog.dates.map((iso) => createOption(iso, formatIsoDateToBr(iso)));
   refs.mp4StartDate.replaceChildren(...options.map((option) => option.cloneNode(true)));
@@ -427,6 +598,8 @@ function populateMp4DateOptions() {
   refs.downloadStartDate.value = state.catalog.dates[0];
   refs.downloadEndDate.value = state.catalog.dates[state.catalog.dates.length - 1];
   syncMp4PresetDates();
+  syncDownloadPresetDates();
+  refreshMp4RangeUi();
 }
 
 function updateMp4Summary() {
@@ -439,9 +612,25 @@ function updateMp4Summary() {
   const framesPerImage = Number(refs.mp4Frames.value || 2);
   const secondsPerImage = framesPerImage / fps;
   const totalDuration = entries.length * secondsPerImage;
+  const stats = getCachedResolutionStats(entries);
+  const selectedResolution = parseResolutionValue(refs.mp4Resolution.value);
+  let resolutionLabel = "Maior imagem da seleção";
+
+  if (selectedResolution) {
+    resolutionLabel = `${selectedResolution.width}x${selectedResolution.height}`;
+  } else if (refs.mp4Resolution.value === "first-valid") {
+    resolutionLabel = "Primeira imagem válida";
+  } else if (stats.largest) {
+    resolutionLabel = `Maior imagem da seleção (${stats.largest.width}x${stats.largest.height})`;
+  }
+
+  const scanHint =
+    entries.length && stats.cachedCount < stats.totalCount
+      ? ` | resoluções lidas ${stats.cachedCount}/${stats.totalCount}`
+      : "";
 
   refs.mp4Summary.textContent = entries.length
-    ? `${entries.length} imagem(ns) de ${label} • duração estimada ${formatDuration(totalDuration)}`
+    ? `${entries.length} imagem(ns) de ${label} | duração estimada ${formatDuration(totalDuration)} | resolução ${resolutionLabel}${scanHint}`
     : "Nenhuma imagem disponível para o exportador com as opções atuais.";
 
   if (!("VideoEncoder" in window)) {
@@ -533,26 +722,13 @@ async function downloadSelectedAsZip() {
   refs.statusText.textContent = `${entries.length} imagem(ns) selecionada(s) baixadas em .zip.`;
 }
 
-function getDateRangeDownloadEntries() {
-  const start = refs.downloadStartDate.value;
-  const end = refs.downloadEndDate.value;
-  let entries = state.catalog.entries.filter((entry) => entry.date_iso >= start && entry.date_iso <= end);
-
-  if (refs.downloadOnlyFavorites.checked) {
-    entries = entries.filter((entry) => state.favorites.has(getFavoriteKey(entry)));
-  }
-
-  entries.sort(compareEntriesChronologically);
-  return { entries, start, end };
-}
-
 function updateDateRangeDownloadSummary() {
-  const { entries, start, end } = getDateRangeDownloadEntries();
+  const { entries, start, end, label } = getDateRangeDownloadEntries();
   const startBr = start ? formatIsoDateToBr(start) : "-";
   const endBr = end ? formatIsoDateToBr(end) : "-";
 
   refs.downloadRangeSummary.textContent = entries.length
-    ? `${entries.length} imagem(ns) entre ${startBr} e ${endBr}`
+    ? `${entries.length} imagem(ns) de ${label} entre ${startBr} e ${endBr}`
     : `Nenhuma imagem entre ${startBr} e ${endBr} com os filtros desta seção.`;
 }
 
@@ -601,7 +777,9 @@ async function loadBitmapForEntry(entry, signal) {
 
   for (const url of candidateUrls) {
     try {
-      return await loadBitmap(url, signal);
+      const bitmap = await loadBitmap(url, signal);
+      rememberEntryDimensions(entry, bitmap.width, bitmap.height);
+      return bitmap;
     } catch (error) {
       lastError = error;
     }
@@ -749,27 +927,44 @@ async function generateMp4() {
     const scale = Number(refs.mp4Scale.value || 1);
     const quality = refs.mp4Quality.value;
     const fileName = getMp4FileName(entries);
-
-    refs.mp4Status.textContent = "Lendo a primeira imagem valida para definir a resolucao do video...";
+    const resolutionMode = refs.mp4Resolution.value || "largest";
+    let baseResolution = parseResolutionValue(resolutionMode);
     let firstBitmap = null;
     let firstEntryIndex = -1;
 
-    for (let index = 0; index < entries.length; index += 1) {
-      try {
-        firstBitmap = await loadBitmapForEntry(entries[index], abortController.signal);
-        firstEntryIndex = index;
-        break;
-      } catch (error) {
-        console.warn(`Pulando imagem sem decodificacao: ${entries[index].filename}`, error);
+    if (!baseResolution && resolutionMode === "largest") {
+      refs.mp4Status.textContent = "Analisando imagens para usar a maior resolução da seleção...";
+      await ensureMp4ResolutionScan();
+      const stats = getCachedResolutionStats(entries);
+      if (!stats.largest) {
+        throw new Error("Nenhuma imagem do lote conseguiu ter a resolução lida para o MP4.");
+      }
+      baseResolution = stats.largest;
+    }
+
+    if (!baseResolution) {
+      refs.mp4Status.textContent = "Lendo a primeira imagem válida para definir a resolução do vídeo...";
+      for (let index = 0; index < entries.length; index += 1) {
+        try {
+          firstBitmap = await loadBitmapForEntry(entries[index], abortController.signal);
+          firstEntryIndex = index;
+          baseResolution = {
+            width: firstBitmap.width,
+            height: firstBitmap.height,
+          };
+          break;
+        } catch (error) {
+          console.warn(`Pulando imagem sem decodificação: ${entries[index].filename}`, error);
+        }
       }
     }
 
-    if (!firstBitmap || firstEntryIndex < 0) {
+    if (!baseResolution) {
       throw new Error("Nenhuma imagem do lote conseguiu ser decodificada para o MP4.");
     }
 
-    const baseWidth = Math.max(2, Math.round(firstBitmap.width * scale));
-    const baseHeight = Math.max(2, Math.round(firstBitmap.height * scale));
+    const baseWidth = Math.max(2, Math.round(baseResolution.width * scale));
+    const baseHeight = Math.max(2, Math.round(baseResolution.height * scale));
     const bitrate = estimateBitrate(baseWidth, baseHeight, fps, quality);
     const totalFrames = entries.length;
 
@@ -1081,6 +1276,12 @@ async function toggleFavorite(entry) {
   saveFavoritesLocally();
   applyFilters(false, false);
   syncViewerFavoriteButton();
+  updateDateRangeDownloadSummary();
+  if (refs.mp4OnlyFavorites?.checked) {
+    refreshMp4RangeUi();
+  } else {
+    updateMp4Summary();
+  }
 
   try {
     await saveFavoriteRemotely(entry, nextActive);
@@ -1094,6 +1295,12 @@ async function toggleFavorite(entry) {
     saveFavoritesLocally();
     applyFilters(false, false);
     syncViewerFavoriteButton();
+    updateDateRangeDownloadSummary();
+    if (refs.mp4OnlyFavorites?.checked) {
+      refreshMp4RangeUi();
+    } else {
+      updateMp4Summary();
+    }
     updateFavoritesSyncStatus("Falha ao salvar favorito online. A alteração foi revertida.");
   }
 }
@@ -1238,6 +1445,10 @@ function bindEvents() {
     refs.thumbSizeLabel.textContent = `${refs.thumbSize.value} px`;
   });
   refs.galleryLoadMore.addEventListener("click", showMoreEntries);
+  refs.downloadPreset.addEventListener("change", () => {
+    syncDownloadPresetDates();
+    updateDateRangeDownloadSummary();
+  });
   refs.downloadStartDate.addEventListener("change", updateDateRangeDownloadSummary);
   refs.downloadEndDate.addEventListener("change", updateDateRangeDownloadSummary);
   refs.downloadOnlyFavorites.addEventListener("change", updateDateRangeDownloadSummary);
@@ -1251,16 +1462,17 @@ function bindEvents() {
   });
   refs.mp4Preset.addEventListener("change", () => {
     syncMp4PresetDates();
-    updateMp4Summary();
+    refreshMp4RangeUi();
   });
-  refs.mp4StartDate.addEventListener("change", updateMp4Summary);
-  refs.mp4EndDate.addEventListener("change", updateMp4Summary);
+  refs.mp4StartDate.addEventListener("change", refreshMp4RangeUi);
+  refs.mp4EndDate.addEventListener("change", refreshMp4RangeUi);
   refs.mp4Order.addEventListener("change", updateMp4Summary);
   refs.mp4Frames.addEventListener("change", updateMp4Summary);
   refs.mp4Fps.addEventListener("change", updateMp4Summary);
+  refs.mp4Resolution.addEventListener("change", updateMp4Summary);
   refs.mp4Scale.addEventListener("change", updateMp4Summary);
   refs.mp4Quality.addEventListener("change", updateMp4Summary);
-  refs.mp4OnlyFavorites.addEventListener("change", updateMp4Summary);
+  refs.mp4OnlyFavorites.addEventListener("change", refreshMp4RangeUi);
   refs.mp4Generate.addEventListener("click", generateMp4);
   refs.mp4Cancel.addEventListener("click", () => {
     state.mp4Job?.abortController.abort();
@@ -1354,6 +1566,7 @@ function cacheRefs() {
   refs.mp4Order = document.querySelector("#mp4-order");
   refs.mp4Frames = document.querySelector("#mp4-frames");
   refs.mp4Fps = document.querySelector("#mp4-fps");
+  refs.mp4Resolution = document.querySelector("#mp4-resolution");
   refs.mp4Scale = document.querySelector("#mp4-scale");
   refs.mp4Quality = document.querySelector("#mp4-quality");
   refs.mp4OnlyFavorites = document.querySelector("#mp4-only-favorites");
@@ -1361,6 +1574,7 @@ function cacheRefs() {
   refs.mp4Cancel = document.querySelector("#mp4-cancel");
   refs.mp4Summary = document.querySelector("#mp4-summary");
   refs.mp4Status = document.querySelector("#mp4-status");
+  refs.downloadPreset = document.querySelector("#download-preset");
   refs.downloadStartDate = document.querySelector("#download-start-date");
   refs.downloadEndDate = document.querySelector("#download-end-date");
   refs.downloadOnlyFavorites = document.querySelector("#download-only-favorites");

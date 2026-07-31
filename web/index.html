@@ -104,6 +104,17 @@
           <details class="panel dropdown-panel">
             <summary>Baixar por Data</summary>
             <div class="panel-content">
+              <label class="field">
+                <span>Preset</span>
+                <select id="download-preset">
+                  <option value="today">Dia de hoje</option>
+                  <option value="week">Semana atual</option>
+                  <option value="last7">7 dias</option>
+                  <option value="month">Mes atual</option>
+                  <option value="last-month">Mes passado</option>
+                </select>
+              </label>
+
               <div class="calendar-controls">
                 <label class="field compact">
                   <span>De</span>
@@ -191,6 +202,14 @@
               </div>
 
               <div class="calendar-controls">
+                <label class="field compact">
+                  <span>Resolucao</span>
+                  <select id="mp4-resolution">
+                    <option value="largest">Maior imagem da selecao</option>
+                    <option value="first-valid">Primeira imagem valida</option>
+                  </select>
+                </label>
+
                 <label class="field compact">
                   <span>Escala</span>
                   <select id="mp4-scale">
