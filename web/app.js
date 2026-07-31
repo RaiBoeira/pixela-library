@@ -638,11 +638,7 @@ function updateMp4Summary() {
     return;
   }
 
-  if ("showSaveFilePicker" in window) {
-    refs.mp4Status.textContent = "Modo recomendado ativo: gravação em arquivo durante o processamento, melhor para vídeos grandes.";
-  } else {
-    refs.mp4Status.textContent = "Fallback ativo: o navegador vai montar o MP4 em memória antes do download. Para vídeos longos, prefira Chrome ou Edge.";
-  }
+  refs.mp4Status.textContent = "O MP4 será gerado primeiro e o salvamento só será pedido no final. Para vídeos longos, isso usa mais memória do navegador.";
 }
 
 async function loadMp4Lib() {
@@ -850,51 +846,46 @@ function getMp4FileName(entries) {
 }
 
 async function chooseMp4Target(fileName, MediaBunny) {
-  if ("showSaveFilePicker" in window) {
-    try {
-      const fileHandle = await window.showSaveFilePicker({
-        suggestedName: fileName,
-        types: [
-          {
-            description: "Video MP4",
-            accept: { "video/mp4": [".mp4"] },
-          },
-        ],
-      });
-      const writable = await fileHandle.createWritable();
-
-      return {
-        mode: "stream",
-        target: new MediaBunny.StreamTarget(writable),
-        finalize: async () => {},
-      };
-    } catch (error) {
-      const blockedByPlatform =
-        error &&
-        (error.name === "SecurityError" ||
-          error.name === "NotAllowedError" ||
-          /createWritable|not allowed|user agent|current context/i.test(error.message ?? ""));
-
-      if (!blockedByPlatform) {
-        throw error;
-      }
-
-      refs.mp4Status.textContent =
-        "Salvamento direto bloqueado neste navegador. Continuando no modo de download normal; para videos grandes, prefira Chrome ou Edge fora do navegador embutido.";
-    }
-  }
-
   return {
     mode: "buffer",
     target: new MediaBunny.BufferTarget(),
     finalize: async (output) => {
       const blob = new Blob([output.target.buffer], { type: "video/mp4" });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = fileName;
-      anchor.click();
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+
+      if ("showSaveFilePicker" in window) {
+        try {
+          const fileHandle = await window.showSaveFilePicker({
+            suggestedName: fileName,
+            types: [
+              {
+                description: "Video MP4",
+                accept: { "video/mp4": [".mp4"] },
+              },
+            ],
+          });
+          const writable = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          return;
+        } catch (error) {
+          const userCancelled = error && (error.name === "AbortError" || error.name === "NotAllowedError");
+          if (userCancelled) {
+            triggerBlobDownload(blob, fileName);
+            return;
+          }
+
+          const blockedByPlatform =
+            error &&
+            (error.name === "SecurityError" ||
+              /createWritable|not allowed|user agent|current context/i.test(error.message ?? ""));
+
+          if (!blockedByPlatform) {
+            throw error;
+          }
+        }
+      }
+
+      triggerBlobDownload(blob, fileName);
     },
   };
 }
