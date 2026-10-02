@@ -683,6 +683,42 @@ async function downloadEntry(entry) {
   triggerBlobDownload(blob, entry.filename);
 }
 
+function getUniqueZipPath(entry, organizeByFolders, usedPaths) {
+  const prefix = organizeByFolders ? `${entry.folder_name}/` : "";
+  const originalPath = `${prefix}${entry.filename}`;
+  const originalKey = originalPath.toLowerCase();
+
+  if (!usedPaths.has(originalKey)) {
+    usedPaths.add(originalKey);
+    return originalPath;
+  }
+
+  const extensionIndex = entry.filename.lastIndexOf(".");
+  const hasExtension = extensionIndex > 0;
+  const baseName = hasExtension ? entry.filename.slice(0, extensionIndex) : entry.filename;
+  const extension = hasExtension ? entry.filename.slice(extensionIndex) : "";
+
+  for (let copyNumber = 2; ; copyNumber += 1) {
+    const candidate = `${prefix}${baseName} (${copyNumber})${extension}`;
+    const candidateKey = candidate.toLowerCase();
+    if (!usedPaths.has(candidateKey)) {
+      usedPaths.add(candidateKey);
+      return candidate;
+    }
+  }
+}
+
+async function addEntriesToZip(zip, entries, organizeByFolders, onProgress) {
+  const usedPaths = new Set();
+
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    const blob = await fetchImageBlob(entry);
+    zip.file(getUniqueZipPath(entry, organizeByFolders, usedPaths), blob);
+    onProgress(index + 1, entries.length);
+  }
+}
+
 async function downloadSelectedAsZip() {
   const entries = [...state.selectedPaths]
     .map((path) => state.entriesByPath.get(path))
@@ -698,12 +734,9 @@ async function downloadSelectedAsZip() {
   const zip = new JSZip();
   refs.statusText.textContent = `Preparando download de ${entries.length} imagem(ns) selecionada(s)...`;
 
-  for (let index = 0; index < entries.length; index += 1) {
-    const entry = entries[index];
-    const blob = await fetchImageBlob(entry);
-    zip.file(`${entry.folder_name}/${entry.filename}`, blob);
-    refs.statusText.textContent = `Compactando selecionadas... ${index + 1}/${entries.length}`;
-  }
+  await addEntriesToZip(zip, entries, refs.downloadSelectedFolders.checked, (current, total) => {
+    refs.statusText.textContent = `Compactando selecionadas... ${current}/${total}`;
+  });
 
   const archive = await zip.generateAsync({
     type: "blob",
@@ -739,12 +772,9 @@ async function downloadDateRangeAsZip() {
   const zip = new JSZip();
   refs.downloadRangeStatus.textContent = `Preparando intervalo ${formatIsoDateToBr(start)} até ${formatIsoDateToBr(end)}...`;
 
-  for (let index = 0; index < entries.length; index += 1) {
-    const entry = entries[index];
-    const blob = await fetchImageBlob(entry);
-    zip.file(`${entry.folder_name}/${entry.filename}`, blob);
-    refs.downloadRangeStatus.textContent = `Compactando intervalo... ${index + 1}/${entries.length}`;
-  }
+  await addEntriesToZip(zip, entries, refs.downloadRangeFolders.checked, (current, total) => {
+    refs.downloadRangeStatus.textContent = `Compactando intervalo... ${current}/${total}`;
+  });
 
   const archive = await zip.generateAsync({
     type: "blob",
@@ -1536,6 +1566,7 @@ function cacheRefs() {
   refs.selectionMode = document.querySelector("#selection-mode");
   refs.favoriteSelected = document.querySelector("#favorite-selected");
   refs.unfavoriteSelected = document.querySelector("#unfavorite-selected");
+  refs.downloadSelectedFolders = document.querySelector("#download-selected-folders");
   refs.downloadSelected = document.querySelector("#download-selected");
   refs.clearSelection = document.querySelector("#clear-selection");
   refs.clearFilters = document.querySelector("#clear-filters");
@@ -1569,6 +1600,7 @@ function cacheRefs() {
   refs.downloadStartDate = document.querySelector("#download-start-date");
   refs.downloadEndDate = document.querySelector("#download-end-date");
   refs.downloadOnlyFavorites = document.querySelector("#download-only-favorites");
+  refs.downloadRangeFolders = document.querySelector("#download-range-folders");
   refs.downloadDateRange = document.querySelector("#download-date-range");
   refs.downloadRangeSummary = document.querySelector("#download-range-summary");
   refs.downloadRangeStatus = document.querySelector("#download-range-status");
